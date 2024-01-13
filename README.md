@@ -17,7 +17,7 @@ To run:
 docker-compose up -d
 
 # Create the traces
-./go-gha-otel-exporter \
+./github-actions-otel-exporter \
     --gha-pat {Your Github PAT} \
     --owner {Your Github Org} \
     --repo {Your Github Repo}
