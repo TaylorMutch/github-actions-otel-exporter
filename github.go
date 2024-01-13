@@ -55,7 +55,7 @@ func listWorkflowJobs(accessToken, owner, repo string) {
 
 func traceWorkflowRun(ctx context.Context, client *github.Client, owner, repo string, run *github.WorkflowRun) {
 	fmt.Printf("  - %d\n", *run.ID)
-	rootCtx, rootSpan := tracer.Start(
+	workflowCtx, workflowSpan := tracer.Start(
 		context.Background(),
 		*run.Name,
 		trace.WithTimestamp(*run.CreatedAt.GetTime()),
@@ -94,7 +94,7 @@ func traceWorkflowRun(ctx context.Context, client *github.Client, owner, repo st
 
 	// Add pull request attributes if this is a workflow triggered from a pull request
 	if len(run.PullRequests) > 0 {
-		rootSpan.SetAttributes(
+		workflowSpan.SetAttributes(
 			attribute.String("github.head_ref", *run.PullRequests[0].Head.Ref),
 			attribute.String("github.base_ref", *run.PullRequests[0].Base.Ref),
 			attribute.String("github.base_sha", *run.PullRequests[0].Base.SHA),
@@ -115,7 +115,7 @@ func traceWorkflowRun(ctx context.Context, client *github.Client, owner, repo st
 	for _, job := range jobs.Jobs {
 		fmt.Printf("    - %s\n", *job.Name)
 		jobCtx, jobSpan := tracer.Start(
-			rootCtx,
+			workflowCtx,
 			*job.Name,
 			trace.WithTimestamp(*job.StartedAt.GetTime()),
 			trace.WithAttributes(
@@ -172,8 +172,8 @@ func traceWorkflowRun(ctx context.Context, client *github.Client, owner, repo st
 	}
 	if run.Conclusion != nil {
 		if run.Conclusion == github.String("failure") {
-			rootSpan.SetStatus(codes.Error, "workflow run failed")
+			workflowSpan.SetStatus(codes.Error, "workflow run failed")
 		}
 	}
-	rootSpan.End(trace.WithTimestamp(*run.UpdatedAt.GetTime()))
+	workflowSpan.End(trace.WithTimestamp(*run.UpdatedAt.GetTime()))
 }
