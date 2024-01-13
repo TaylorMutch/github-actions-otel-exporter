@@ -36,3 +36,16 @@ Visit the Jaeger UI at http://localhost:16686 to see the traces.
 ### Jaeger UI Example
 
 ![Jaeger UI](assets/jaeger-ui.png)
+
+## Architecture
+
+The following diagram describes a high level architecture for this application.
+
+![Architecture](assets/arch.png)
+
+* A GitHub webhook is configured to deliver "workflow runs completed" events to the application
+* The application receives the webhook and queries the GitHub API for the workflow run and job details
+* The application emits a trace to the configured OTEL backend with spans for each step in the workflow run
+* The application emits a log stream to a configured logging backend with the contents of the log files for each job in the workflow run
+
+In the example above we are using [Grafana](https://github.com/grafana/grafana) as a visualization layer for the traces (stored in [Tempo](https://github.com/grafana/tempo)) and logs (stored in [Loki](https://github.com/grafana/loki)), but any OTEL-compatible backend can be used.
