@@ -102,7 +102,12 @@ func traceWorkflowRun(ctx context.Context, client *github.Client, owner, repo st
 		)
 	}
 
-	// TODO - include the "queue" time to start the first job in the workflow after it was created
+	// Create a span for the queue time
+	_, queueSpan := tracer.Start(
+		workflowCtx,
+		"queue",
+		trace.WithTimestamp(*run.CreatedAt.GetTime()),
+	)
 
 	// Retrieve the jobs for a workflow
 	jobs, _, err := client.Actions.ListWorkflowJobs(ctx, owner, repo, *run.ID, nil)
@@ -110,6 +115,12 @@ func traceWorkflowRun(ctx context.Context, client *github.Client, owner, repo st
 		fmt.Printf("Error retrieving workflow run jobs: %v\n", err)
 		return
 	}
+
+	// End the queue span at the first job's start time
+	if len(jobs.Jobs) > 0 {
+		queueSpan.End(trace.WithTimestamp(*jobs.Jobs[0].StartedAt.GetTime()))
+	}
+
 	// Print the jobs
 	fmt.Println("    Jobs:")
 	for _, job := range jobs.Jobs {
