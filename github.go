@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 
 	"github.com/google/go-github/v58/github"
 	"go.opentelemetry.io/otel"
@@ -48,12 +50,19 @@ func listWorkflowJobs(accessToken, owner, repo string) {
 		// Print the runs
 		fmt.Println("  Runs:")
 		for _, run := range runs.WorkflowRuns {
-			traceWorkflowRun(ctx, client, owner, repo, run)
+			traceWorkflowRun(ctx, ts, client, owner, repo, run)
 		}
 	}
 }
 
-func traceWorkflowRun(ctx context.Context, client *github.Client, owner, repo string, run *github.WorkflowRun) {
+func traceWorkflowRun(
+	ctx context.Context,
+	ts oauth2.TokenSource,
+	client *github.Client,
+	owner,
+	repo string,
+	run *github.WorkflowRun,
+) {
 	fmt.Printf("  - %d\n", *run.ID)
 	workflowCtx, workflowSpan := tracer.Start(
 		context.Background(),
@@ -180,6 +189,7 @@ func traceWorkflowRun(ctx context.Context, client *github.Client, owner, repo st
 			}
 		}
 		jobSpan.End(trace.WithTimestamp(*job.CompletedAt.GetTime()))
+		getWorkflowJobLogs(ctx, ts, client, owner, repo, job)
 	}
 	if run.Conclusion != nil {
 		if run.Conclusion == github.String("failure") {
@@ -187,4 +197,34 @@ func traceWorkflowRun(ctx context.Context, client *github.Client, owner, repo st
 		}
 	}
 	workflowSpan.End(trace.WithTimestamp(*run.UpdatedAt.GetTime()))
+}
+
+func getWorkflowJobLogs(ctx context.Context, ts oauth2.TokenSource, client *github.Client, owner, repo string, job *github.WorkflowJob) {
+	// Get the log retrieval url
+	url, _, err := client.Actions.GetWorkflowJobLogs(ctx, owner, repo, *job.ID, 1)
+	if err != nil {
+		fmt.Printf("Error retrieving workflow run logs url: %v\n", err)
+		return
+	}
+
+	logClient := oauth2.NewClient(ctx, ts)
+	req, err := http.NewRequestWithContext(ctx, "GET", url.String(), nil)
+	if err != nil {
+		fmt.Printf("Error creating request for retrieving workflow run logs: %v\n", err)
+		return
+	}
+	resp, err := logClient.Do(req)
+	if err != nil {
+		fmt.Printf("Error downloading workflow run logs: %v\n", err)
+		return
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Error reading response body: %v\n", err)
+		return
+	}
+
+	// TODO - ingest the logs for a given trace into Loki
+	fmt.Printf("Workflow run logs:\n%s\n", body)
 }
