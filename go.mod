@@ -1,4 +1,4 @@
-module github.com/TaylorMutch/go-gha-otel-exporter
+module github.com/TaylorMutch/github-actions-otel-exporter
 
 go 1.21.4
 

@@ -1,4 +1,4 @@
-# go-gha-otel-exporter
+# github-actions-otel-exporter
 
 This application allows you to emit OpenTelemetry traces to an OTEL-compatible tracing backend that measure the length of different steps within a GitHub Action pipeline.
 
@@ -7,7 +7,7 @@ This application allows you to emit OpenTelemetry traces to an OTEL-compatible t
 To build:
 
 ```bash
-go build -o go-gha-otel-exporter
+go build -o github-actions-otel-exporter
 ```
 
 To run:
