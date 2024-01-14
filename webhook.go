@@ -52,18 +52,32 @@ func NewAPI(ctx context.Context, ts oauth2.TokenSource, ghclient *github.Client)
 // and executes the traceWorkflowRun function
 func (api *API) handleWebhook(c *gin.Context) {
 	payload := github.WorkflowRunEvent{}
-	err := c.BindJSON(payload)
+	err := c.BindJSON(&payload)
 	if err != nil {
 		slog.Debug("failed to unmarshal github.WorkflowRunEvent", "error", err)
 		c.String(http.StatusBadRequest, "bad payload")
 		return
 	}
-	owner := payload.Repo.Owner.Name
-	repo := payload.Repo.Name
-	err = traceWorkflowRun(api.ctx, api.ts, api.ghclient, *owner, *repo, payload.WorkflowRun)
+
+	// Don't trace workflows that are not completed
+	if *payload.WorkflowRun.Status != "completed" {
+		slog.Debug("workflow run not completed", "status", payload.WorkflowRun.Status)
+		c.String(http.StatusOK, "ok")
+		return
+	}
+
+	owner := payload.Org.GetName()
+	if owner == "" {
+		owner = payload.Repo.Owner.GetName()
+	}
+	owner = "TaylorMutch"
+	repo := payload.Repo.GetName()
+	err = traceWorkflowRun(api.ctx, api.ts, api.ghclient, owner, repo, payload.WorkflowRun)
 	if err != nil {
 		slog.Error("failed to trace workflow run", "error", err)
 		// We don't want to return an error to GitHub, so we just log it
+	} else {
+		slog.Info("successfully traced workflow run", "run_id", *payload.WorkflowRun.ID)
 	}
 	c.String(http.StatusOK, "ok")
 }

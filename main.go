@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/go-github/v58/github"
 	"golang.org/x/oauth2"
 )
@@ -25,7 +26,7 @@ func main() {
 	//otelEndpoint := flag.String("otel-endpoint", "localhost:4317", "OTEL Collector endpoint")
 	//logEndpoint := flag.String("log-endpoint", "localhost:3100/loki/api/v1/push", "Loki endpoint")
 	flag.Parse()
-
+	gin.SetMode(gin.ReleaseMode)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
@@ -55,6 +56,8 @@ func main() {
 	}
 
 	go gracefulShutdown(ctx, server)
+
+	slog.Info("starting server", "addr", server.Addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		slog.Error("failed to start server", "error", err)
 	}
