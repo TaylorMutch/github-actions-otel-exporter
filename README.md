@@ -4,6 +4,8 @@ This application allows you to emit OpenTelemetry traces to an OTEL-compatible t
 
 ## Usage
 
+The application runs as a service to catch webhook events from GitHub. Specifically the events are the `workflow_run.completed` events. When the application receives an event, it will query the GitHub API for the workflow run and job details and emit telemetry to the configured OTEL backend with spans for each step in the workflow run.
+
 To build:
 
 ```bash
@@ -16,17 +18,31 @@ To run:
 # Start the backend
 docker-compose up -d
 
-# Create the traces
-# TODO - change this to run as a service
+# Run the service to receive traces
 ./github-actions-otel-exporter \
-    --gha-pat {Your Github PAT} \
-    --owner {Your Github Org} \
-    --repo {Your Github Repo}
+    --gha-pat {Your Github PAT}
 ```
 
 Visit the Jaeger UI at http://localhost:16686 to see the traces.
 
 * **NOTE**: The traces will use the timestamps of the actions workflow runs and jobs, so you may need to adjust query times to see the traces.
+
+## Testing Locally
+
+To test locally, I followed [this guide](https://docs.github.com/en/webhooks/testing-and-troubleshooting-webhooks/testing-webhooks#testing-webhook-code-locally) on delivering webhooks to a local application.
+
+```bash
+# Install smee-client
+npm install --global smee-client
+
+# Run the proxy locally - you will need to get your link from the smee.io website
+smee --url https://smee.io/YOUR_UNIQUE_URL --path /webhook --port 8080
+
+# Run the application with your own PAT
+go run . --gha-pat YOUR_GITHUB_PATH
+```
+
+To trigger a webhook invocation, you can setup a workflow that emits events (see [this example](.github/workflows/hello-world.yaml) I've added to this repo) and then setup a repository webhook for a repo to send events to your https://smee.io URL.
 
 ## Inspiration
 
