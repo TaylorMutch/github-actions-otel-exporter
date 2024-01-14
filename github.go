@@ -18,43 +18,7 @@ var (
 	tracer = otel.GetTracerProvider().Tracer("github.actions")
 )
 
-func listWorkflowJobs(accessToken, owner, repo string) {
-	// Create a GitHub client using an access token
-	ctx := context.Background()
-	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: accessToken},
-	)
-	tc := oauth2.NewClient(ctx, ts)
-	client := github.NewClient(tc)
-
-	// Retrieve the workflows for a repository
-	workflows, _, err := client.Actions.ListWorkflows(ctx, owner, repo, nil)
-	if err != nil {
-		fmt.Printf("Error retrieving workflows: %v\n", err)
-		return
-	}
-
-	// Print the workflows
-	// TODO - we should not list all workflows each time we create a trace; this is
-	// just for testing
-	fmt.Println("Workflows:")
-	for _, workflow := range workflows.Workflows {
-		fmt.Printf("- %s\n", *workflow.Name)
-
-		runs, _, err := client.Actions.ListWorkflowRunsByID(ctx, owner, repo, *workflow.ID, nil)
-		if err != nil {
-			fmt.Printf("Error retrieving workflow runs: %v\n", err)
-			return
-		}
-
-		// Print the runs
-		fmt.Println("  Runs:")
-		for _, run := range runs.WorkflowRuns {
-			traceWorkflowRun(ctx, ts, client, owner, repo, run)
-		}
-	}
-}
-
+// traceWorkflowRun traces a given workflow run
 func traceWorkflowRun(
 	ctx context.Context,
 	ts oauth2.TokenSource,
@@ -62,8 +26,7 @@ func traceWorkflowRun(
 	owner,
 	repo string,
 	run *github.WorkflowRun,
-) {
-	fmt.Printf("  - %d\n", *run.ID)
+) error {
 	workflowCtx, workflowSpan := tracer.Start(
 		context.Background(),
 		*run.Name,
@@ -88,19 +51,6 @@ func traceWorkflowRun(
 		),
 	)
 
-	// Add head commit attributes if available
-	/*
-		if run.HeadCommit != nil {
-			rootSpan.SetAttributes(
-				attribute.String("github.head_commit.url", *run.HeadCommit.URL),
-				attribute.String("github.head_commit.message", *run.HeadCommit.Message),
-				attribute.String("github.head_commit.id", *run.HeadCommit.ID),
-				attribute.String("github.head_commit.author.name", *run.HeadCommit.Author.Name),
-				attribute.String("github.head_commit.author.email", *run.HeadCommit.Author.Email),
-			)
-		}
-	*/
-
 	// Add pull request attributes if this is a workflow triggered from a pull request
 	if len(run.PullRequests) > 0 {
 		workflowSpan.SetAttributes(
@@ -121,8 +71,7 @@ func traceWorkflowRun(
 	// Retrieve the jobs for a workflow
 	jobs, _, err := client.Actions.ListWorkflowJobs(ctx, owner, repo, *run.ID, nil)
 	if err != nil {
-		fmt.Printf("Error retrieving workflow run jobs: %v\n", err)
-		return
+		return fmt.Errorf("error retrieving workflow run jobs: %w", err)
 	}
 
 	// End the queue span at the first job's start time
@@ -131,65 +80,11 @@ func traceWorkflowRun(
 	}
 
 	// Print the jobs
-	fmt.Println("    Jobs:")
 	for _, job := range jobs.Jobs {
-		fmt.Printf("    - %s\n", *job.Name)
-		jobCtx, jobSpan := tracer.Start(
-			workflowCtx,
-			*job.Name,
-			trace.WithTimestamp(*job.StartedAt.GetTime()),
-			trace.WithAttributes(
-				attribute.Int64("github.job.run_id", *job.RunID),
-				attribute.String("github.job.name", *job.Name),
-				attribute.String("github.job.status", *job.Status),
-				attribute.String("github.job.conclusion", *job.Conclusion),
-				attribute.String("github.job.html_url", *job.HTMLURL),
-				attribute.String("github.job.started_at", job.StartedAt.String()),
-				attribute.String("github.job.completed_at", job.CompletedAt.String()),
-				attribute.StringSlice("github.job.runs_on", job.Labels),
-			),
-		)
-
-		// Add runner attributes if available
-		if job.RunnerGroupID != nil {
-			jobSpan.SetAttributes(
-				attribute.Int64("github.job.runner_group_id", *job.RunnerGroupID),
-				attribute.String("github.job.runner_group_name", *job.RunnerGroupName),
-				attribute.String("github.job.runner_name", *job.RunnerName),
-			)
+		err := traceWorkflowJob(ctx, ts, client, owner, repo, job)
+		if err != nil {
+			return fmt.Errorf("error tracing workflow job: %w", err)
 		}
-
-		// Prints the steps
-		fmt.Println("      Steps:")
-		for _, step := range job.Steps {
-			fmt.Printf("      - %s\n", *step.Name)
-			_, stepSpan := tracer.Start(
-				jobCtx,
-				*step.Name,
-				trace.WithTimestamp(*step.StartedAt.GetTime()),
-				trace.WithAttributes(
-					attribute.String("github.step.name", *step.Name),
-					attribute.String("github.step.status", *step.Status),
-					attribute.String("github.step.conclusion", *step.Conclusion),
-					attribute.String("github.step.started_at", step.StartedAt.String()),
-					attribute.String("github.step.completed_at", step.CompletedAt.String()),
-					attribute.Int64("github.step.number", *step.Number),
-				),
-			)
-			if step.Conclusion != nil {
-				if step.Conclusion == github.String("failure") {
-					stepSpan.SetStatus(codes.Error, "workflow step failed")
-				}
-			}
-			stepSpan.End(trace.WithTimestamp(*step.CompletedAt.GetTime()))
-		}
-		if job.Conclusion != nil {
-			if job.Conclusion == github.String("failure") {
-				jobSpan.SetStatus(codes.Error, "workflow job failed")
-			}
-		}
-		jobSpan.End(trace.WithTimestamp(*job.CompletedAt.GetTime()))
-		getWorkflowJobLogs(ctx, ts, client, owner, repo, job)
 	}
 	if run.Conclusion != nil {
 		if run.Conclusion == github.String("failure") {
@@ -197,34 +92,124 @@ func traceWorkflowRun(
 		}
 	}
 	workflowSpan.End(trace.WithTimestamp(*run.UpdatedAt.GetTime()))
+	return nil
 }
 
-func getWorkflowJobLogs(ctx context.Context, ts oauth2.TokenSource, client *github.Client, owner, repo string, job *github.WorkflowJob) {
+func traceWorkflowJob(
+	ctx context.Context,
+	ts oauth2.TokenSource,
+	client *github.Client,
+	owner,
+	repo string,
+	job *github.WorkflowJob,
+) error {
+	jobCtx, jobSpan := tracer.Start(
+		ctx,
+		*job.Name,
+		trace.WithTimestamp(*job.StartedAt.GetTime()),
+		trace.WithAttributes(
+			attribute.Int64("github.job.run_id", *job.RunID),
+			attribute.String("github.job.name", *job.Name),
+			attribute.String("github.job.status", *job.Status),
+			attribute.String("github.job.conclusion", *job.Conclusion),
+			attribute.String("github.job.html_url", *job.HTMLURL),
+			attribute.String("github.job.started_at", job.StartedAt.String()),
+			attribute.String("github.job.completed_at", job.CompletedAt.String()),
+			attribute.StringSlice("github.job.runs_on", job.Labels),
+		),
+	)
+
+	// Add runner attributes if available
+	if job.RunnerGroupID != nil {
+		jobSpan.SetAttributes(
+			attribute.Int64("github.job.runner_group_id", *job.RunnerGroupID),
+			attribute.String("github.job.runner_group_name", *job.RunnerGroupName),
+			attribute.String("github.job.runner_name", *job.RunnerName),
+		)
+	}
+
+	// Prints the steps
+	for _, step := range job.Steps {
+		err := traceWorkflowStep(jobCtx, ts, client, owner, repo, step)
+		if err != nil {
+			return fmt.Errorf("error tracing workflow step: %w", err)
+		}
+	}
+	if job.Conclusion != nil {
+		if job.Conclusion == github.String("failure") {
+			jobSpan.SetStatus(codes.Error, "workflow job failed")
+		}
+	}
+	jobSpan.End(trace.WithTimestamp(*job.CompletedAt.GetTime()))
+
+	// TODO - retrieve the logs for a given job and ingest them
+	//getWorkflowJobLogs(ctx, ts, client, owner, repo, job)
+
+	return nil
+}
+
+// traceWorkflowStep traces a given workflow step
+func traceWorkflowStep(
+	ctx context.Context,
+	ts oauth2.TokenSource,
+	client *github.Client,
+	owner,
+	repo string,
+	step *github.TaskStep,
+) error {
+	_, stepSpan := tracer.Start(
+		ctx,
+		*step.Name,
+		trace.WithTimestamp(*step.StartedAt.GetTime()),
+		trace.WithAttributes(
+			attribute.String("github.step.name", *step.Name),
+			attribute.String("github.step.status", *step.Status),
+			attribute.String("github.step.conclusion", *step.Conclusion),
+			attribute.String("github.step.started_at", step.StartedAt.String()),
+			attribute.String("github.step.completed_at", step.CompletedAt.String()),
+			attribute.Int64("github.step.number", *step.Number),
+		),
+	)
+	if step.Conclusion != nil {
+		if step.Conclusion == github.String("failure") {
+			stepSpan.SetStatus(codes.Error, "workflow step failed")
+		}
+	}
+	stepSpan.End(trace.WithTimestamp(*step.CompletedAt.GetTime()))
+	return nil
+}
+
+// getWorkflowJobLogs retrieves the logs for a given workflow job
+func getWorkflowJobLogs(
+	ctx context.Context,
+	ts oauth2.TokenSource,
+	client *github.Client,
+	owner,
+	repo string,
+	job *github.WorkflowJob,
+) error {
 	// Get the log retrieval url
 	url, _, err := client.Actions.GetWorkflowJobLogs(ctx, owner, repo, *job.ID, 1)
 	if err != nil {
-		fmt.Printf("Error retrieving workflow run logs url: %v\n", err)
-		return
+		return fmt.Errorf("error retrieving workflow job logs url: %w", err)
 	}
 
 	logClient := oauth2.NewClient(ctx, ts)
 	req, err := http.NewRequestWithContext(ctx, "GET", url.String(), nil)
 	if err != nil {
-		fmt.Printf("Error creating request for retrieving workflow run logs: %v\n", err)
-		return
+		return fmt.Errorf("error creating request for retrieving workflow job logs: %w", err)
 	}
 	resp, err := logClient.Do(req)
 	if err != nil {
-		fmt.Printf("Error downloading workflow run logs: %v\n", err)
-		return
+		return fmt.Errorf("error retrieving workflow job logs: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Printf("Error reading response body: %v\n", err)
-		return
+		return fmt.Errorf("error reading response body: %w", err)
 	}
 
 	// TODO - ingest the logs for a given trace into Loki
 	fmt.Printf("Workflow run logs:\n%s\n", body)
+	return nil
 }
