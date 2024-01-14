@@ -4,13 +4,6 @@ receivers:
       grpc:
 
 exporters:
-  prometheus:
-    endpoint: "0.0.0.0:8889"
-    const_labels:
-      label1: value1
-
-  #debug:
-
   otlp:
     endpoint: jaeger-all-in-one:4317
     tls:
@@ -19,23 +12,9 @@ exporters:
 processors:
   batch:
 
-extensions:
-  health_check:
-  pprof:
-    endpoint: :1888
-  zpages:
-    endpoint: :55679
-
 service:
-  extensions: [pprof, zpages, health_check]
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
-      #exporters: [debug, zipkin, otlp]
       exporters: [otlp]
-    metrics:
-      receivers: [otlp]
-      processors: [batch]
-      #exporters: [debug, prometheus]
-      exporters: [prometheus]
