@@ -142,9 +142,7 @@ func traceWorkflowJob(
 	}
 	jobSpan.End(trace.WithTimestamp(*job.CompletedAt.GetTime()))
 
-	// TODO - retrieve the logs for a given job and ingest them
-	//getWorkflowJobLogs(ctx, ts, client, owner, repo, job)
-
+	getWorkflowJobLogs(ctx, ts, client, owner, repo, job)
 	return nil
 }
 
@@ -204,12 +202,11 @@ func getWorkflowJobLogs(
 		return fmt.Errorf("error retrieving workflow job logs: %w", err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	_, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("error reading response body: %w", err)
 	}
 
 	// TODO - ingest the logs for a given trace into Loki
-	fmt.Printf("Workflow run logs:\n%s\n", body)
 	return nil
 }

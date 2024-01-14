@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/go-github/v58/github"
@@ -66,12 +67,9 @@ func (api *API) handleWebhook(c *gin.Context) {
 		return
 	}
 
-	owner := payload.Org.GetName()
-	if owner == "" {
-		owner = payload.Repo.Owner.GetName()
-	}
-	owner = "TaylorMutch"
-	repo := payload.Repo.GetName()
+	fullname := payload.Repo.GetFullName()
+	parts := strings.Split(fullname, "/")
+	owner, repo := parts[0], parts[1]
 	err = traceWorkflowRun(api.ctx, api.ts, api.ghclient, owner, repo, payload.WorkflowRun)
 	if err != nil {
 		slog.Error("failed to trace workflow run", "error", err)

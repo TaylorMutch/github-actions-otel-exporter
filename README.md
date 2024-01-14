@@ -23,7 +23,7 @@ docker-compose up -d
     --gha-pat {Your Github PAT}
 ```
 
-Visit the Jaeger UI at http://localhost:16686 to see the traces.
+Visit the Jaeger UI at [http://localhost:16686](http://localhost:16686) to see the traces.
 
 * **NOTE**: The traces will use the timestamps of the actions workflow runs and jobs, so you may need to adjust query times to see the traces.
 
