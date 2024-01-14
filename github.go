@@ -81,7 +81,7 @@ func traceWorkflowRun(
 
 	// Print the jobs
 	for _, job := range jobs.Jobs {
-		err := traceWorkflowJob(ctx, ts, client, owner, repo, job)
+		err := traceWorkflowJob(workflowCtx, ts, client, owner, repo, job)
 		if err != nil {
 			return fmt.Errorf("error tracing workflow job: %w", err)
 		}
