@@ -1,0 +1,17 @@
+# This workflow can be triggered by a push to the test-webhook branch
+# to test the webhook functionality.
+name: Hello World
+
+on:
+  push:
+    branches:
+      - test-webhook
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Print Hello World
+        run: echo "Hello, World!"
