@@ -1,4 +1,11 @@
 version: "3"
+
+volumes:
+  minio-mimir:
+  minio-loki:
+  mimir-data:
+  loki-data:
+
 services:
 
   # Jaeger
@@ -16,8 +23,110 @@ services:
     restart: always
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
-      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+      - ./local-dev/otel-collector-config.yaml:/etc/otel-collector-config.yaml
     ports:
       - "4317:4317"   # OTLP gRPC receiver
     depends_on:
       - jaeger-all-in-one
+
+  mimir-minio:
+    image: minio/minio
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        mkdir -p /data/mimir && \
+        minio server --quiet /data
+    environment:
+      - MINIO_ROOT_USER=mimir
+      - MINIO_ROOT_PASSWORD=supersecret
+    volumes:
+      - minio-mimir:/data
+
+  mimir:
+    image: grafana/mimir:latest
+    command: ["-config.file=/etc/mimir.yaml"]
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mimir-minio
+    volumes:
+      - ./local-dev/mimir.yaml:/etc/mimir.yaml
+      - ./local-dev/alertmanager-fallback-config.yaml:/etc/alertmanager-fallback-config.yaml
+      - mimir-data:/data
+
+  minio-loki:
+    image: minio/minio
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        mkdir -p /data/loki-data && \
+        mkdir -p /data/loki-ruler &&
+        minio server --quiet /data
+    environment:
+      - MINIO_ROOT_USER=loki
+      - MINIO_ROOT_PASSWORD=supersecret
+    volumes:
+      - minio-loki:/data
+
+  loki:
+    image: grafana/loki:2.9.3
+    ports:
+      - "3100:3100"
+    command:  ["-config.file=/etc/loki.yaml"]
+    depends_on:
+      - minio-loki
+    volumes:
+      - ./local-dev/loki.yaml:/etc/loki.yaml
+      - loki-data:/data
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        mkdir -p /etc/grafana/provisioning/datasources
+        cat <<EOF > /etc/grafana/provisioning/datasources/ds.yaml
+        apiVersion: 1
+        datasources:
+        - name: Mimir
+          type: prometheus
+          access: proxy
+          uid: mimir-local
+          orgId: 1
+          url: http://mimir:8080/prometheus
+          basicAuth: false
+          isDefault: false
+          version: 1
+          editable: true
+        - name: Loki
+          type: loki
+          access: proxy
+          uid: loki-local
+          orgId: 1
+          url: http://loki:3100
+          basicAuth: false
+          isDefault: false
+          version: 1
+          editable: true
+        - name: Jaeger
+          type: jaeger
+          url: http://jaeger-all-in-one:16686
+          access: proxy
+          uid: jaeger-local
+          orgId: 1
+          editable: true
+          version: 1
+          basicAuth: false
+          readOnly: false
+          isDefault: true
+        EOF
+        /run.sh
