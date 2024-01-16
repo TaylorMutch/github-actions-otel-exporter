@@ -31,9 +31,6 @@ func NewAPI(ctx context.Context, ts oauth2.TokenSource, ghclient *github.Client,
 		var u urlutil.URLValue
 		u.Set(logEndpoint)
 		lokiConf, err := loki.NewDefaultConfig(logEndpoint)
-		//lokiConf.ExternalLabels = labelutil.LabelSet{
-		//	LabelSet: model.LabelSet{model.LabelSet{"service": "github-actions-otel-exporter"}},
-		//}
 		if err != nil {
 			return nil, fmt.Errorf("failed to create loki config: %w", err)
 		}
