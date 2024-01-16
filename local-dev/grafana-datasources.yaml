@@ -1,0 +1,51 @@
+apiVersion: 1
+datasources:
+- name: Mimir
+  type: prometheus
+  access: proxy
+  uid: mimir-local
+  orgId: 1
+  url: http://mimir:8080/prometheus
+  basicAuth: false
+  isDefault: false
+  version: 1
+  editable: true
+- name: Loki
+  type: loki
+  access: proxy
+  uid: loki-local
+  orgId: 1
+  url: http://loki:3100
+  basicAuth: false
+  isDefault: false
+  version: 1
+  editable: true
+  jsonData:
+    derivedFields:
+    - datasourceUid: tempo
+      matcherType: "label"
+      matcherRegex: "trace_id"
+      name: "trace_id"
+      url: "$${__value.raw}"
+      urlDisplayLabel: ""
+- name: Tempo
+  type: tempo
+  access: proxy
+  orgId: 1
+  url: http://tempo:3200
+  basicAuth: false
+  isDefault: false
+  version: 1
+  editable: true
+  apiVersion: 1
+  uid: tempo
+  jsonData:
+    httpMethod: GET
+    serviceMap:
+      datasourceUid: mimir
+    tracesToLogsV2:
+      customQuery: false
+      datasourceUid: loki-local
+      tags:
+      - key: "github.run_id"
+        value: "workflow_id"

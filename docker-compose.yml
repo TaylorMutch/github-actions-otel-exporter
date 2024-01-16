@@ -3,8 +3,10 @@ version: "3"
 volumes:
   minio-mimir:
   minio-loki:
+  minio-tempo:
   mimir-data:
   loki-data:
+  tempo-data:
 
 services:
 
@@ -26,15 +28,6 @@ services:
   #    OTEL_SERVICE_NAME: "github-actions-otel-exporter"
   #    OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
 
-  # Jaeger
-  jaeger-all-in-one:
-    image: jaegertracing/all-in-one:latest
-    restart: always
-    ports:
-      - "16686:16686"
-      - "14268"
-      - "14250"
-
   # Collector
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.88.0
@@ -45,7 +38,8 @@ services:
     ports:
       - "4317:4317"   # OTLP gRPC receiver
     depends_on:
-      - jaeger-all-in-one
+      - tempo
+      - mimir
 
   # Mimir
   mimir-minio:
@@ -99,6 +93,35 @@ services:
       - ./local-dev/loki.yaml:/etc/loki.yaml
       - loki-data:/data
 
+  # Tempo
+  minio-tempo:
+    image: minio/minio
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        mkdir -p /data/tempo-data &&
+        minio server --quiet /data
+    environment:
+      - MINIO_ROOT_USER=tempo
+      - MINIO_ROOT_PASSWORD=supersecret
+    volumes:
+      - minio-tempo:/data
+  tempo:
+    image: grafana/tempo:latest
+    ports:
+      - "14268"  # jaeger ingest
+      - "3200"   # tempo
+      - "4317"  # otlp grpc
+      - "4318"  # otlp http
+      - "9411"   # zipkin
+    command:  ["-config.file=/etc/tempo.yaml"]
+    depends_on:
+      - minio-tempo
+    volumes:
+      - ./local-dev/tempo.yaml:/etc/tempo.yaml
+      - ./tempo-data:/tmp/tempo
+
   # Grafana
   grafana:
     image: grafana/grafana:latest
@@ -108,45 +131,6 @@ services:
       - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-    entrypoint:
-      - sh
-      - -euc
-      - |
-        mkdir -p /etc/grafana/provisioning/datasources
-        cat <<EOF > /etc/grafana/provisioning/datasources/ds.yaml
-        apiVersion: 1
-        datasources:
-        - name: Mimir
-          type: prometheus
-          access: proxy
-          uid: mimir-local
-          orgId: 1
-          url: http://mimir:8080/prometheus
-          basicAuth: false
-          isDefault: false
-          version: 1
-          editable: true
-        - name: Loki
-          type: loki
-          access: proxy
-          uid: loki-local
-          orgId: 1
-          url: http://loki:3100
-          basicAuth: false
-          isDefault: false
-          version: 1
-          editable: true
-        - name: Jaeger
-          type: jaeger
-          url: http://jaeger-all-in-one:16686
-          access: proxy
-          uid: jaeger-local
-          orgId: 1
-          editable: true
-          version: 1
-          basicAuth: false
-          readOnly: false
-          isDefault: true
-        EOF
-        /run.sh
+    volumes:
+    - ./local-dev/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
 
