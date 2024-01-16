@@ -18,7 +18,7 @@ import (
 
 // setupOTelSDK bootstraps the OpenTelemetry pipeline.
 // If it does not return an error, make sure to call shutdown for proper cleanup.
-func setupOTelSDK(ctx context.Context, serviceName, serviceVersion string) (shutdown func(context.Context) error, err error) {
+func setupOTelSDK(ctx context.Context, serviceName, serviceVersion string, insecure bool) (shutdown func(context.Context) error, err error) {
 	var shutdownFuncs []func(context.Context) error
 
 	// shutdown calls cleanup functions registered via shutdownFuncs.
@@ -50,7 +50,7 @@ func setupOTelSDK(ctx context.Context, serviceName, serviceVersion string) (shut
 	otel.SetTextMapPropagator(prop)
 
 	// Set up trace provider.
-	tracerProvider, err := newTraceProvider(res)
+	tracerProvider, err := newTraceProvider(res, insecure)
 	if err != nil {
 		handleErr(err)
 		return
@@ -59,7 +59,7 @@ func setupOTelSDK(ctx context.Context, serviceName, serviceVersion string) (shut
 	otel.SetTracerProvider(tracerProvider)
 
 	// Set up meter provider.
-	meterProvider, err := newMeterProvider(res)
+	meterProvider, err := newMeterProvider(res, insecure)
 	if err != nil {
 		handleErr(err)
 		return
@@ -85,9 +85,13 @@ func newPropagator() propagation.TextMapPropagator {
 	)
 }
 
-func newTraceProvider(res *resource.Resource) (*trace.TracerProvider, error) {
+func newTraceProvider(res *resource.Resource, insecure bool) (*trace.TracerProvider, error) {
 	ctx := context.Background()
-	traceExporter, err := otlptracegrpc.New(ctx)
+	opts := []otlptracegrpc.Option{}
+	if insecure {
+		opts = append(opts, otlptracegrpc.WithInsecure())
+	}
+	traceExporter, err := otlptracegrpc.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -101,11 +105,13 @@ func newTraceProvider(res *resource.Resource) (*trace.TracerProvider, error) {
 	return traceProvider, nil
 }
 
-func newMeterProvider(res *resource.Resource) (*metric.MeterProvider, error) {
+func newMeterProvider(res *resource.Resource, insecure bool) (*metric.MeterProvider, error) {
 	ctx := context.Background()
-	metricExporter, err := otlpmetricgrpc.New(
-		ctx,
-	)
+	opts := []otlpmetricgrpc.Option{}
+	if insecure {
+		opts = append(opts, otlpmetricgrpc.WithInsecure())
+	}
+	metricExporter, err := otlpmetricgrpc.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
