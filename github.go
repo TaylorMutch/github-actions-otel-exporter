@@ -243,22 +243,27 @@ func (ght *GitHubTracer) getWorkflowJobLogs(
 	// For each line in the log, parse the timestamp from the log line
 	// and use that as the timestamp to ingest into Loki
 	logLines := strings.Split(string(logLinesRaw), "\n")
+	lastTimestamp := job.StartedAt.GetTime()
 	for _, log := range logLines {
 		// If the log line is empty, skip it
 		if len(log) == 0 {
 			continue
 		}
 
-		// Parse the timestamp using the defined layout
+		// Multi-line logs do not include the timestamp after the first line, so we need to
+		// parse the timestamp from the first line and apply it to all subsequent lines
 		timestamp, err := time.Parse(timestampLayout, log[:len(timestampLayout)])
 		if err != nil {
-			return fmt.Errorf("error parsing timestamp from log line: %w", err)
+			slog.Warn("error parsing timestamp from log line", "error", err)
+		} else {
+			// New timestamp found, update the last timestamp
+			lastTimestamp = &timestamp
 		}
 
 		// Queue the logs to be send to Loki
 		err = ght.lokiClient.Handle(
 			labels,
-			timestamp,
+			*lastTimestamp,
 			log,
 		)
 		if err != nil {
