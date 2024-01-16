@@ -94,12 +94,12 @@ func (ght *GitHubTracer) traceWorkflowRun(
 	// Print the jobs
 	for _, job := range jobs.Jobs {
 		// Trace the workflow job
-		err := ght.traceWorkflowJob(workflowCtx, owner, repo, job)
+		jobSpanTraceID, err := ght.traceWorkflowJob(workflowCtx, owner, repo, job)
 		if err != nil {
 			return fmt.Errorf("error tracing workflow job: %w", err)
 		}
 		// Collect the logs
-		if err := ght.getWorkflowJobLogs(owner, repo, run, job); err != nil {
+		if err := ght.getWorkflowJobLogs(jobSpanTraceID, owner, repo, run, job); err != nil {
 			return err
 		}
 	}
@@ -117,7 +117,7 @@ func (ght *GitHubTracer) traceWorkflowJob(
 	owner,
 	repo string,
 	job *github.WorkflowJob,
-) error {
+) (string, error) {
 	jobCtx, jobSpan := tracer.Start(
 		workflowCtx,
 		*job.Name,
@@ -148,7 +148,7 @@ func (ght *GitHubTracer) traceWorkflowJob(
 	for _, step := range job.Steps {
 		err := ght.traceWorkflowStep(jobCtx, owner, repo, step)
 		if err != nil {
-			return fmt.Errorf("error tracing workflow step: %w", err)
+			return "", fmt.Errorf("error tracing workflow step: %w", err)
 		}
 	}
 	if job.Conclusion != nil {
@@ -157,7 +157,7 @@ func (ght *GitHubTracer) traceWorkflowJob(
 		}
 	}
 	jobSpan.End(trace.WithTimestamp(*job.CompletedAt.GetTime()))
-	return nil
+	return jobSpan.SpanContext().TraceID().String(), nil
 }
 
 // traceWorkflowStep traces a given workflow step
@@ -196,6 +196,7 @@ const (
 
 // getWorkflowJobLogs retrieves the logs for a given workflow job
 func (ght *GitHubTracer) getWorkflowJobLogs(
+	jobSpanTraceID,
 	owner,
 	repo string,
 	run *github.WorkflowRun,
@@ -227,8 +228,10 @@ func (ght *GitHubTracer) getWorkflowJobLogs(
 		return fmt.Errorf("error reading response body: %w", err)
 	}
 
-	// TODO - determine the set of labels to attach to this log stream
 	labels := model.LabelSet{
+		// Allow us to link the logs to the job span
+		"trace_id": model.LabelValue(jobSpanTraceID),
+		// Common labels to associate with the run
 		"repo_owner":        model.LabelValue(owner),
 		"repo_name":         model.LabelValue(repo),
 		"workflow_name":     model.LabelValue(run.GetName()),
