@@ -66,3 +66,19 @@ The following diagram describes a high level architecture for this application.
 * The application emits a log stream to a configured logging backend with the contents of the log files for each job in the workflow run
 
 In the example above we are using [Grafana](https://github.com/grafana/grafana) as a visualization layer for the traces (stored in [Tempo](https://github.com/grafana/tempo)) and logs (stored in [Loki](https://github.com/grafana/loki)), but any OTEL-compatible backend can be used.
+
+### Grafana Loki and Tempo Configuration
+
+**NOTE**: As of this writing (Jan 15, 2024) I am using Grafana 10.2.3, Tempo 2.3 and Loki 2.9.3.
+
+To allow linking between logs and traces, we leverage the [traces to logs](https://grafana.com/docs/grafana/next/datasources/tempo/configure-tempo-data-source/#trace-to-logs) and "logs to traces" (aka [derived fields](https://grafana.com/docs/grafana/next/datasources/loki/configure-loki-data-source/#derived-fields)) features of Grafana Tempo and Loki. This requires a few configuration steps (see the below screenshots):
+
+1. Configure the Loki datasource to use the Tempo datasource as a "logs to traces" correlation:
+
+![Logs To Traces](assets/logs-to-traces.png)
+
+2. Configure the Tempo datasource to use the Loki datasource as a "traces to logs" correlation:
+
+![Traces To Logs](assets/traces-to-logs.png)
+
+Once this is configured, you can use the internal links in the traces and logs to jump between the two different views.
