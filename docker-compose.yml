@@ -8,6 +8,24 @@ volumes:
 
 services:
 
+  # Our service
+  # Enable these options if you'd like to test the GitHub Actions OTel Exporter
+  # locally. You'll need to set the GITHUB_PAT environment variable to a valid
+  # GitHub Personal Access Token.
+  # We recommend use a `.env` file to store this variable so that docker-compose
+  # can pick it up automatically.
+  github-actions-otel-exporter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    command:
+    - "--gha-pat=${GITHUB_PAT}"
+    environment:
+      OTEL_SERVICE_NAME: "github-actions-otel-exporter"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+
   # Jaeger
   jaeger-all-in-one:
     image: jaegertracing/all-in-one:latest
@@ -132,12 +150,3 @@ services:
         EOF
         /run.sh
 
-  # Our service
-  github-actions-otel-exporter:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "8081:8080"
-    command:
-    - "--gha-pat=${GITHUB_PAT}"
