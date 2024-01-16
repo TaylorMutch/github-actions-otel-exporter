@@ -18,11 +18,17 @@ var (
 	tracer = otel.GetTracerProvider().Tracer("github.actions")
 )
 
+// GitHubTracer is a struct that implements the Tracer interface
+type GitHubTracer struct {
+	ctx         context.Context
+	ghclient    *github.Client
+	ts          oauth2.TokenSource
+	logEndpoint string
+	logClient   *http.Client
+}
+
 // traceWorkflowRun traces a given workflow run
-func traceWorkflowRun(
-	ctx context.Context,
-	ts oauth2.TokenSource,
-	client *github.Client,
+func (ght *GitHubTracer) traceWorkflowRun(
 	owner,
 	repo string,
 	run *github.WorkflowRun,
@@ -69,7 +75,7 @@ func traceWorkflowRun(
 	)
 
 	// Retrieve the jobs for a workflow
-	jobs, _, err := client.Actions.ListWorkflowJobs(ctx, owner, repo, *run.ID, nil)
+	jobs, _, err := ght.ghclient.Actions.ListWorkflowJobs(ght.ctx, owner, repo, *run.ID, nil)
 	if err != nil {
 		return fmt.Errorf("error retrieving workflow run jobs: %w", err)
 	}
@@ -81,7 +87,7 @@ func traceWorkflowRun(
 
 	// Print the jobs
 	for _, job := range jobs.Jobs {
-		err := traceWorkflowJob(ctx, workflowCtx, ts, client, owner, repo, job)
+		err := ght.traceWorkflowJob(workflowCtx, owner, repo, job)
 		if err != nil {
 			return fmt.Errorf("error tracing workflow job: %w", err)
 		}
@@ -95,11 +101,8 @@ func traceWorkflowRun(
 	return nil
 }
 
-func traceWorkflowJob(
-	ctx context.Context,
+func (ght *GitHubTracer) traceWorkflowJob(
 	workflowCtx context.Context,
-	ts oauth2.TokenSource,
-	client *github.Client,
 	owner,
 	repo string,
 	job *github.WorkflowJob,
@@ -131,7 +134,7 @@ func traceWorkflowJob(
 
 	// Prints the steps
 	for _, step := range job.Steps {
-		err := traceWorkflowStep(jobCtx, ts, client, owner, repo, step)
+		err := ght.traceWorkflowStep(jobCtx, owner, repo, step)
 		if err != nil {
 			return fmt.Errorf("error tracing workflow step: %w", err)
 		}
@@ -143,15 +146,15 @@ func traceWorkflowJob(
 	}
 	jobSpan.End(trace.WithTimestamp(*job.CompletedAt.GetTime()))
 
-	getWorkflowJobLogs(ctx, ts, client, owner, repo, job)
+	if err := ght.getWorkflowJobLogs(owner, repo, job); err != nil {
+		return err
+	}
 	return nil
 }
 
 // traceWorkflowStep traces a given workflow step
-func traceWorkflowStep(
+func (ght *GitHubTracer) traceWorkflowStep(
 	jobCtx context.Context,
-	ts oauth2.TokenSource,
-	client *github.Client,
 	owner,
 	repo string,
 	step *github.TaskStep,
@@ -179,26 +182,22 @@ func traceWorkflowStep(
 }
 
 // getWorkflowJobLogs retrieves the logs for a given workflow job
-func getWorkflowJobLogs(
-	ctx context.Context,
-	ts oauth2.TokenSource,
-	client *github.Client,
+func (ght *GitHubTracer) getWorkflowJobLogs(
 	owner,
 	repo string,
 	job *github.WorkflowJob,
 ) error {
 	// Get the log retrieval url
-	url, _, err := client.Actions.GetWorkflowJobLogs(ctx, owner, repo, *job.ID, 1)
+	url, _, err := ght.ghclient.Actions.GetWorkflowJobLogs(ght.ctx, owner, repo, *job.ID, 1)
 	if err != nil {
 		return fmt.Errorf("error retrieving workflow job logs url: %w", err)
 	}
-
-	logClient := oauth2.NewClient(ctx, ts)
-	req, err := http.NewRequestWithContext(ctx, "GET", url.String(), nil)
+	// Retrieve the logs
+	req, err := http.NewRequestWithContext(ght.ctx, "GET", url.String(), nil)
 	if err != nil {
 		return fmt.Errorf("error creating request for retrieving workflow job logs: %w", err)
 	}
-	resp, err := logClient.Do(req)
+	resp, err := ght.logClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("error retrieving workflow job logs: %w", err)
 	}

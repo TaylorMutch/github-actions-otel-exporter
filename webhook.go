@@ -16,19 +16,24 @@ import (
 
 // API is the main API struct
 type API struct {
-	ctx      context.Context
-	Router   *gin.Engine
-	ghclient *github.Client
-	ts       oauth2.TokenSource
+	ctx    context.Context
+	Router *gin.Engine
+	ght    *GitHubTracer
 }
 
 // NewAPI creates a new API instance
-func NewAPI(ctx context.Context, ts oauth2.TokenSource, ghclient *github.Client) *API {
+func NewAPI(ctx context.Context, ts oauth2.TokenSource, ghclient *github.Client, logEndpoint string) *API {
+	ght := &GitHubTracer{
+		ctx:         ctx,
+		ghclient:    ghclient,
+		ts:          ts,
+		logEndpoint: logEndpoint,
+		logClient:   oauth2.NewClient(ctx, ts),
+	}
 	api := API{
-		ctx:      ctx,
-		Router:   gin.New(),
-		ghclient: ghclient,
-		ts:       ts,
+		ctx:    ctx,
+		Router: gin.New(),
+		ght:    ght,
 	}
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	api.Router.Use(
@@ -70,7 +75,11 @@ func (api *API) handleWebhook(c *gin.Context) {
 	fullname := payload.Repo.GetFullName()
 	parts := strings.Split(fullname, "/")
 	owner, repo := parts[0], parts[1]
-	err = traceWorkflowRun(api.ctx, api.ts, api.ghclient, owner, repo, payload.WorkflowRun)
+
+	// TODO - send the workflow run to a channel to be processed
+	// so that we can return a response to GitHub as quickly as possible;
+	// we don't want to fail http requests by us taking too long to process
+	err = api.ght.traceWorkflowRun(owner, repo, payload.WorkflowRun)
 	if err != nil {
 		slog.Error("failed to trace workflow run", "error", err)
 		// We don't want to return an error to GitHub, so we just log it

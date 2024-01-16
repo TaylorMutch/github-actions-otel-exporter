@@ -23,8 +23,7 @@ const (
 
 func main() {
 	pat := flag.String("gha-pat", "", "GitHub Actions Personal Access Token")
-	//otelEndpoint := flag.String("otel-endpoint", "localhost:4317", "OTEL Collector endpoint")
-	//logEndpoint := flag.String("log-endpoint", "localhost:3100/loki/api/v1/push", "Loki endpoint")
+	logEndpoint := flag.String("log-endpoint", "http://localhost:3100/loki/api/v1/push", "Loki endpoint")
 	flag.Parse()
 	gin.SetMode(gin.ReleaseMode)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -46,10 +45,10 @@ func main() {
 		&oauth2.Token{AccessToken: *pat},
 	)
 	tc := oauth2.NewClient(ctx, ts)
-	client := github.NewClient(tc)
+	ghclient := github.NewClient(tc)
 
 	// Setup API
-	api := NewAPI(ctx, ts, client)
+	api := NewAPI(ctx, ts, ghclient, *logEndpoint)
 	server := &http.Server{
 		Addr:    ":8080",
 		Handler: api.Router,
