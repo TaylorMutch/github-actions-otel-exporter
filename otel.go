@@ -59,15 +59,13 @@ func setupOTelSDK(ctx context.Context, serviceName, serviceVersion string) (shut
 	otel.SetTracerProvider(tracerProvider)
 
 	// Set up meter provider.
-	/*
-		meterProvider, err := newMeterProvider(res)
-		if err != nil {
-			handleErr(err)
-			return
-		}
-		shutdownFuncs = append(shutdownFuncs, meterProvider.Shutdown)
-		otel.SetMeterProvider(meterProvider)
-	*/
+	meterProvider, err := newMeterProvider(res)
+	if err != nil {
+		handleErr(err)
+		return
+	}
+	shutdownFuncs = append(shutdownFuncs, meterProvider.Shutdown)
+	otel.SetMeterProvider(meterProvider)
 
 	return
 }
@@ -89,11 +87,7 @@ func newPropagator() propagation.TextMapPropagator {
 
 func newTraceProvider(res *resource.Resource) (*trace.TracerProvider, error) {
 	ctx := context.Background()
-	traceExporter, err := otlptracegrpc.New(
-		ctx,
-		otlptracegrpc.WithEndpoint("localhost:4317"),
-		otlptracegrpc.WithInsecure(),
-	)
+	traceExporter, err := otlptracegrpc.New(ctx)
 	if err != nil {
 		return nil, err
 	}
