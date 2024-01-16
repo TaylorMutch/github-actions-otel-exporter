@@ -81,7 +81,7 @@ func traceWorkflowRun(
 
 	// Print the jobs
 	for _, job := range jobs.Jobs {
-		err := traceWorkflowJob(workflowCtx, ts, client, owner, repo, job)
+		err := traceWorkflowJob(ctx, workflowCtx, ts, client, owner, repo, job)
 		if err != nil {
 			return fmt.Errorf("error tracing workflow job: %w", err)
 		}
@@ -97,6 +97,7 @@ func traceWorkflowRun(
 
 func traceWorkflowJob(
 	ctx context.Context,
+	workflowCtx context.Context,
 	ts oauth2.TokenSource,
 	client *github.Client,
 	owner,
@@ -104,7 +105,7 @@ func traceWorkflowJob(
 	job *github.WorkflowJob,
 ) error {
 	jobCtx, jobSpan := tracer.Start(
-		ctx,
+		workflowCtx,
 		*job.Name,
 		trace.WithTimestamp(*job.StartedAt.GetTime()),
 		trace.WithAttributes(
@@ -148,7 +149,7 @@ func traceWorkflowJob(
 
 // traceWorkflowStep traces a given workflow step
 func traceWorkflowStep(
-	ctx context.Context,
+	jobCtx context.Context,
 	ts oauth2.TokenSource,
 	client *github.Client,
 	owner,
@@ -156,7 +157,7 @@ func traceWorkflowStep(
 	step *github.TaskStep,
 ) error {
 	_, stepSpan := tracer.Start(
-		ctx,
+		jobCtx,
 		*step.Name,
 		trace.WithTimestamp(*step.StartedAt.GetTime()),
 		trace.WithAttributes(
