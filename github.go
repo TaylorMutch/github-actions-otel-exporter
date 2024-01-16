@@ -31,6 +31,32 @@ type GitHubTracer struct {
 	logEndpoint string
 	logClient   *http.Client
 	lokiClient  *loki.Client
+	quit        chan struct{}
+	queue       chan github.WorkflowRunEvent
+}
+
+// Run the GitHubTracer in a goroutine until it is called to quit
+func (ght *GitHubTracer) run() {
+	slog.Info("starting github tracer routine")
+	for {
+		select {
+		case <-ght.quit:
+			slog.Info("closing the github tracer routine")
+			return
+
+		case e := <-ght.queue:
+			slog.Info("received workflow run event")
+			fullname := e.Repo.GetFullName()
+			parts := strings.Split(fullname, "/")
+			owner, repo := parts[0], parts[1]
+			err := ght.traceWorkflowRun(owner, repo, e.WorkflowRun)
+			if err != nil {
+				slog.Error("failed to trace workflow run", "error", err)
+			} else {
+				slog.Info("successfully traced workflow run", "run_id", *e.WorkflowRun.ID)
+			}
+		}
+	}
 }
 
 // traceWorkflowRun traces a given workflow run

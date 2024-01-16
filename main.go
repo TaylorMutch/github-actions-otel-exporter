@@ -56,12 +56,15 @@ func main() {
 		slog.Error("failed to setup api", "error", err)
 		os.Exit(1)
 	}
+	// Start the backend tracer queue
+	go api.ght.run()
+
+	// Start the server
 	server := &http.Server{
 		Addr:    *address,
 		Handler: api.Router,
 	}
 	go gracefulShutdown(ctx, server, api)
-
 	slog.Info("starting server", "addr", server.Addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		slog.Error("failed to start server", "error", err)
