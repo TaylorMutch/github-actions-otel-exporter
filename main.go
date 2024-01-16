@@ -23,7 +23,9 @@ const (
 
 func main() {
 	pat := flag.String("gha-pat", "", "GitHub Actions Personal Access Token")
+	address := flag.String("address", ":8081", "Address to listen on")
 	logEndpoint := flag.String("log-endpoint", "http://localhost:3100/loki/api/v1/push", "Loki endpoint")
+	otelInsecure := flag.Bool("otel-insecure", false, "Use insecure connection for OTEL")
 	flag.Parse()
 	gin.SetMode(gin.ReleaseMode)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -34,9 +36,10 @@ func main() {
 	defer cancel()
 
 	// Setup OTEL exporter
-	shutdown, err := setupOTelSDK(ctx, serviceName, serviceVersion)
+	shutdown, err := setupOTelSDK(ctx, serviceName, serviceVersion, *otelInsecure)
 	if err != nil {
-		panic(err)
+		slog.Error("failed to setup OTEL SDK", "error", err)
+		os.Exit(1)
 	}
 	defer shutdown(ctx)
 
@@ -48,13 +51,16 @@ func main() {
 	ghclient := github.NewClient(tc)
 
 	// Setup API
-	api := NewAPI(ctx, ts, ghclient, *logEndpoint)
+	api, err := NewAPI(ctx, ts, ghclient, *logEndpoint)
+	if err != nil {
+		slog.Error("failed to setup api", "error", err)
+		os.Exit(1)
+	}
 	server := &http.Server{
-		Addr:    ":8080",
+		Addr:    *address,
 		Handler: api.Router,
 	}
-
-	go gracefulShutdown(ctx, server)
+	go gracefulShutdown(ctx, server, api)
 
 	slog.Info("starting server", "addr", server.Addr)
 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -63,7 +69,7 @@ func main() {
 }
 
 //nolint:contextcheck
-func gracefulShutdown(ctx context.Context, server *http.Server) {
+func gracefulShutdown(ctx context.Context, server *http.Server, api *API) {
 	// wait for signal
 	<-ctx.Done()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), httpShutdownTimeout)
@@ -71,5 +77,8 @@ func gracefulShutdown(ctx context.Context, server *http.Server) {
 	slog.Info("gracefully shutting down the server")
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		slog.Error("unable to shutdown server", "error", err)
+	}
+	if err := api.Shutdown(); err != nil {
+		slog.Error("unable to shutdown api", "error", err)
 	}
 }

@@ -36,7 +36,7 @@ To test locally, I followed [this guide](https://docs.github.com/en/webhooks/tes
 npm install --global smee-client
 
 # Run the proxy locally - you will need to get your link from the smee.io website
-smee --url https://smee.io/YOUR_UNIQUE_URL --path /webhook --port 8080
+smee --url https://smee.io/YOUR_UNIQUE_URL --path /webhook --port 8081
 
 # Run the application with your own PAT
 go run . --gha-pat YOUR_GITHUB_PATH

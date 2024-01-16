@@ -4,9 +4,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/google/go-github/v58/github"
+	"github.com/grafana/loki-client-go/loki"
+	"github.com/prometheus/common/model"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -25,6 +30,7 @@ type GitHubTracer struct {
 	ts          oauth2.TokenSource
 	logEndpoint string
 	logClient   *http.Client
+	lokiClient  *loki.Client
 }
 
 // traceWorkflowRun traces a given workflow run
@@ -87,9 +93,14 @@ func (ght *GitHubTracer) traceWorkflowRun(
 
 	// Print the jobs
 	for _, job := range jobs.Jobs {
+		// Trace the workflow job
 		err := ght.traceWorkflowJob(workflowCtx, owner, repo, job)
 		if err != nil {
 			return fmt.Errorf("error tracing workflow job: %w", err)
+		}
+		// Collect the logs
+		if err := ght.getWorkflowJobLogs(owner, repo, run, job); err != nil {
+			return err
 		}
 	}
 	if run.Conclusion != nil {
@@ -112,6 +123,7 @@ func (ght *GitHubTracer) traceWorkflowJob(
 		*job.Name,
 		trace.WithTimestamp(*job.StartedAt.GetTime()),
 		trace.WithAttributes(
+			attribute.Int64("github.job.id", *job.ID),
 			attribute.Int64("github.job.run_id", *job.RunID),
 			attribute.String("github.job.name", *job.Name),
 			attribute.String("github.job.status", *job.Status),
@@ -145,10 +157,6 @@ func (ght *GitHubTracer) traceWorkflowJob(
 		}
 	}
 	jobSpan.End(trace.WithTimestamp(*job.CompletedAt.GetTime()))
-
-	if err := ght.getWorkflowJobLogs(owner, repo, job); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -181,12 +189,24 @@ func (ght *GitHubTracer) traceWorkflowStep(
 	return nil
 }
 
+const (
+	// LogFormat
+	timestampLayout = "2006-01-02T15:04:05.9999999Z"
+)
+
 // getWorkflowJobLogs retrieves the logs for a given workflow job
 func (ght *GitHubTracer) getWorkflowJobLogs(
 	owner,
 	repo string,
+	run *github.WorkflowRun,
 	job *github.WorkflowJob,
 ) error {
+	// Skip ingesting logs if we don't have a loki endpoint configured
+	if ght.lokiClient == nil {
+		slog.Debug("loki client not configured, not retrieving logs")
+		return nil
+	}
+
 	// Get the log retrieval url
 	url, _, err := ght.ghclient.Actions.GetWorkflowJobLogs(ght.ctx, owner, repo, *job.ID, 1)
 	if err != nil {
@@ -202,11 +222,45 @@ func (ght *GitHubTracer) getWorkflowJobLogs(
 		return fmt.Errorf("error retrieving workflow job logs: %w", err)
 	}
 	defer resp.Body.Close()
-	_, err = io.ReadAll(resp.Body)
+	logLinesRaw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("error reading response body: %w", err)
 	}
 
-	// TODO - ingest the logs for a given trace into Loki
+	// TODO - determine the set of labels to attach to this log stream
+	labels := model.LabelSet{
+		"repo_owner":        model.LabelValue(owner),
+		"repo_name":         model.LabelValue(repo),
+		"workflow_name":     model.LabelValue(run.GetName()),
+		"workflow_id":       model.LabelValue(github.Stringify(run.ID)),
+		"workflow_job_name": model.LabelValue(job.GetName()),
+		"workflow_job_id":   model.LabelValue(github.Stringify(job.ID)),
+	}
+
+	// For each line in the log, parse the timestamp from the log line
+	// and use that as the timestamp to ingest into Loki
+	logLines := strings.Split(string(logLinesRaw), "\n")
+	for _, log := range logLines {
+		// If the log line is empty, skip it
+		if len(log) == 0 {
+			continue
+		}
+
+		// Parse the timestamp using the defined layout
+		timestamp, err := time.Parse(timestampLayout, log[:len(timestampLayout)])
+		if err != nil {
+			return fmt.Errorf("error parsing timestamp from log line: %w", err)
+		}
+
+		// Queue the logs to be send to Loki
+		err = ght.lokiClient.Handle(
+			labels,
+			timestamp,
+			log,
+		)
+		if err != nil {
+			return fmt.Errorf("error queuing log line to be sent to loki: %w", err)
+		}
+	}
 	return nil
 }

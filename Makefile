@@ -5,3 +5,6 @@ up:
 .PHONY: down
 down:
 	docker-compose down
+
+run-local:
+	OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317" go run . --gha-pat $(GITHUB_PAT)
