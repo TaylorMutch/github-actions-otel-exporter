@@ -280,7 +280,7 @@ func (ght *GitHubTracer) getWorkflowJobLogs(
 		// parse the timestamp from the first line and apply it to all subsequent lines
 		timestamp, err := time.Parse(timestampLayout, log[:len(timestampLayout)])
 		if err != nil {
-			slog.Warn("error parsing timestamp from log line", "error", err)
+			slog.Debug("error parsing timestamp from log line", "error", err)
 		} else {
 			// New timestamp found, update the last timestamp
 			lastTimestamp = &timestamp
