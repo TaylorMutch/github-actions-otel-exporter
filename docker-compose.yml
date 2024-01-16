@@ -29,6 +29,7 @@ services:
     depends_on:
       - jaeger-all-in-one
 
+  # Mimir
   mimir-minio:
     image: minio/minio
     entrypoint:
@@ -42,7 +43,6 @@ services:
       - MINIO_ROOT_PASSWORD=supersecret
     volumes:
       - minio-mimir:/data
-
   mimir:
     image: grafana/mimir:latest
     command: ["-config.file=/etc/mimir.yaml"]
@@ -55,6 +55,7 @@ services:
       - ./local-dev/alertmanager-fallback-config.yaml:/etc/alertmanager-fallback-config.yaml
       - mimir-data:/data
 
+  # Loki
   minio-loki:
     image: minio/minio
     entrypoint:
@@ -69,7 +70,6 @@ services:
       - MINIO_ROOT_PASSWORD=supersecret
     volumes:
       - minio-loki:/data
-
   loki:
     image: grafana/loki:2.9.3
     ports:
@@ -81,6 +81,7 @@ services:
       - ./local-dev/loki.yaml:/etc/loki.yaml
       - loki-data:/data
 
+  # Grafana
   grafana:
     image: grafana/grafana:latest
     ports:
@@ -130,3 +131,13 @@ services:
           isDefault: true
         EOF
         /run.sh
+
+  # Our service
+  github-actions-otel-exporter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    command:
+    - "--gha-pat=${GITHUB_PAT}"

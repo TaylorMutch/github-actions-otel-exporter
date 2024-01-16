@@ -8,12 +8,20 @@ exporters:
     endpoint: jaeger-all-in-one:4317
     tls:
       insecure: true
+  otlphttp/metrics:
+    endpoint: "http://mimir:8080/otlp"
+    tls:
+      insecure: true
 
 processors:
   batch:
 
 service:
   pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/metrics]
     traces:
       receivers: [otlp]
       processors: [batch]
