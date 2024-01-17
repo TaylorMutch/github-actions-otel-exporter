@@ -1,9 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -27,9 +27,7 @@ var (
 type GitHubTracer struct {
 	ctx         context.Context
 	ghclient    *github.Client
-	ts          oauth2.TokenSource
 	logEndpoint string
-	logClient   *http.Client
 	lokiClient  *loki.Client
 	quit        chan struct{}
 	queue       chan github.WorkflowRunEvent
@@ -239,19 +237,16 @@ func (ght *GitHubTracer) getWorkflowJobLogs(
 	if err != nil {
 		return fmt.Errorf("error retrieving workflow job logs url: %w", err)
 	}
+
 	// Retrieve the logs
 	req, err := http.NewRequestWithContext(ght.ctx, "GET", url.String(), nil)
 	if err != nil {
 		return fmt.Errorf("error creating request for retrieving workflow job logs: %w", err)
 	}
-	resp, err := ght.logClient.Do(req)
+	var logLinesRaw bytes.Buffer
+	_, err = ght.ghclient.Do(ght.ctx, req, &logLinesRaw)
 	if err != nil {
 		return fmt.Errorf("error retrieving workflow job logs: %w", err)
-	}
-	defer resp.Body.Close()
-	logLinesRaw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("error reading response body: %w", err)
 	}
 
 	labels := model.LabelSet{
@@ -268,7 +263,7 @@ func (ght *GitHubTracer) getWorkflowJobLogs(
 
 	// For each line in the log, parse the timestamp from the log line
 	// and use that as the timestamp to ingest into Loki
-	logLines := strings.Split(string(logLinesRaw), "\n")
+	logLines := strings.Split(logLinesRaw.String(), "\n")
 	lastTimestamp := job.StartedAt.GetTime()
 	for _, log := range logLines {
 		// If the log line is empty, skip it

@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki-client-go/pkg/urlutil"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	sloggin "github.com/samber/slog-gin"
-	"golang.org/x/oauth2"
 )
 
 // API is the main API struct
@@ -24,8 +23,7 @@ type API struct {
 }
 
 // NewAPI creates a new API instance
-func NewAPI(ctx context.Context, ts oauth2.TokenSource, ghclient *github.Client, logEndpoint string) (*API, error) {
-
+func NewAPI(ctx context.Context, ghclient *github.Client, logEndpoint string) (*API, error) {
 	var lokiClient *loki.Client
 	if logEndpoint != "" {
 		var u urlutil.URLValue
@@ -43,9 +41,7 @@ func NewAPI(ctx context.Context, ts oauth2.TokenSource, ghclient *github.Client,
 	ght := &GitHubTracer{
 		ctx:         ctx,
 		ghclient:    ghclient,
-		ts:          ts,
 		logEndpoint: logEndpoint,
-		logClient:   oauth2.NewClient(ctx, ts),
 		lokiClient:  lokiClient,
 		queue:       make(chan github.WorkflowRunEvent),
 		quit:        make(chan struct{}),

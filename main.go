@@ -51,7 +51,7 @@ func main() {
 	ghclient := github.NewClient(tc)
 
 	// Setup API
-	api, err := NewAPI(ctx, ts, ghclient, *logEndpoint)
+	api, err := NewAPI(ctx, ghclient, *logEndpoint)
 	if err != nil {
 		slog.Error("failed to setup api", "error", err)
 		os.Exit(1)
