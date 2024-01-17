@@ -39,12 +39,11 @@ func NewAPI(ctx context.Context, ghclient *github.Client, logEndpoint string) (*
 	}
 
 	ght := &GitHubTracer{
-		ctx:         ctx,
-		ghclient:    ghclient,
-		logEndpoint: logEndpoint,
-		lokiClient:  lokiClient,
-		queue:       make(chan github.WorkflowRunEvent),
-		quit:        make(chan struct{}),
+		ctx:        ctx,
+		ghclient:   ghclient,
+		lokiClient: lokiClient,
+		queue:      make(chan github.WorkflowRunEvent),
+		quit:       make(chan struct{}),
 	}
 	api := API{
 		ctx:    ctx,

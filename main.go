@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/go-github/v58/github"
-	"golang.org/x/oauth2"
 )
 
 const (
@@ -23,6 +21,9 @@ const (
 
 func main() {
 	pat := flag.String("gha-pat", "", "GitHub Actions Personal Access Token")
+	appFilename := flag.String("gha-app-filename", "", "GitHub App file path")
+	appID := flag.Int64("gha-app-id", 0, "GitHub App ID")
+	installID := flag.Int64("gha-install-id", 0, "GitHub App Installation ID")
 	address := flag.String("address", ":8081", "Address to listen on")
 	logEndpoint := flag.String("log-endpoint", "http://localhost:3100/loki/api/v1/push", "Loki endpoint")
 	otelInsecure := flag.Bool("otel-insecure", false, "Use insecure connection for OTEL")
@@ -44,11 +45,11 @@ func main() {
 	defer shutdown(ctx)
 
 	// Setup GitHub client
-	ts := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: *pat},
-	)
-	tc := oauth2.NewClient(ctx, ts)
-	ghclient := github.NewClient(tc)
+	ghclient, err := getGithubClient(*pat, *appFilename, *appID, *installID)
+	if err != nil {
+		slog.Error("failed to setup github client", "error", err)
+		os.Exit(1)
+	}
 
 	// Setup API
 	api, err := NewAPI(ctx, ghclient, *logEndpoint)

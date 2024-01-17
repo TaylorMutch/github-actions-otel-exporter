@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/google/go-github/v58/github"
 	"github.com/grafana/loki-client-go/loki"
 	"github.com/prometheus/common/model"
@@ -23,14 +24,42 @@ var (
 	tracer = otel.GetTracerProvider().Tracer("github.actions")
 )
 
+// getGithubClients returns a github.Client suitable for making requests to the GitHub API.
+// It supports both GitHub Apps and GitHub Actions Personal Access Tokens.
+func getGithubClient(ghapat, appFilename string, appID int64, installID int64) (*github.Client, error) {
+	if ghapat == "" && appFilename == "" {
+		return nil, fmt.Errorf("either a GitHub App file path or a GitHub Actions Personal Access Token is required")
+	}
+	if ghapat != "" && appFilename != "" {
+		return nil, fmt.Errorf("only one of a GitHub App file path or a GitHub Actions Personal Access Token can be specified")
+	}
+	// If a GitHub Actions Personal Access Token is provided, use that for authentication
+	if ghapat != "" {
+		slog.Info("using github personal access token for authentication")
+		ts := oauth2.StaticTokenSource(
+			&oauth2.Token{AccessToken: ghapat},
+		)
+		tc := oauth2.NewClient(context.Background(), ts)
+		return github.NewClient(tc), nil
+	}
+	// If a GitHub App file path is provided, use that for authentication
+	slog.Info("using github app for authentication")
+	itr, err := ghinstallation.NewKeyFromFile(http.DefaultTransport, appID, installID, appFilename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create github app installation transport: %w", err)
+	}
+	client := github.NewClient(&http.Client{Transport: itr})
+	return client, nil
+}
+
 // GitHubTracer is a struct that implements the Tracer interface
+// to emit telemetry for GitHub Actions workflows
 type GitHubTracer struct {
-	ctx         context.Context
-	ghclient    *github.Client
-	logEndpoint string
-	lokiClient  *loki.Client
-	quit        chan struct{}
-	queue       chan github.WorkflowRunEvent
+	ctx        context.Context
+	ghclient   *github.Client
+	lokiClient *loki.Client
+	quit       chan struct{}
+	queue      chan github.WorkflowRunEvent
 }
 
 // Run the GitHubTracer in a goroutine until it is called to quit
