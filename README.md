@@ -55,7 +55,7 @@ npm install --global smee-client
 smee --url https://smee.io/YOUR_UNIQUE_URL --path /webhook --port 8081
 
 # Run the application with your own PAT
-go run . --gha-pat YOUR_GITHUB_PATH
+GHA_PAT=${YOUR_GITHUB_PAT} go run .
 ```
 
 Once you have a smee URL, you can start a smee client. I have added a `make smee` command to this repo's Makefile, which takes a `SMEE_URL` variable.
