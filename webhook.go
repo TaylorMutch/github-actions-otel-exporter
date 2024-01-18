@@ -70,8 +70,11 @@ func NewAPI(ctx context.Context, ghclient *github.Client, logEndpoint string) (*
 }
 
 func (api *API) Shutdown() error {
-	slog.Debug("shutting down loki client")
-	api.ght.lokiClient.Stop()
+	slog.Info("shutting down api client")
+	if api.ght.lokiClient != nil {
+		slog.Info("shutting down loki client")
+		api.ght.lokiClient.Stop()
+	}
 	close(api.ght.quit)
 	return nil
 }
