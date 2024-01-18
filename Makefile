@@ -11,7 +11,7 @@ down: ## Stop the docker-compose stack.
 
 .PHONY: run
 run: ## Run the exporter locally. This is useful for testing outside of docker-compose.
-	GHA_PAT="$(GITHUB_PAT)" OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317" go run .
+	GHA_PAT="$(GITHUB_PAT)" OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317" LOG_ENDPOINT="http://localhost:3100/loki/api/v1/push" go run .
 
 .PHONY: smee
 smee: ## Run the smee.io proxy client. Must have SMEE_URL set.

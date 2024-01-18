@@ -35,6 +35,8 @@ type Config struct {
 	Address string `envconfig:"ADDRESS" default:":8081"`
 	// LogEndpoint is the endpoint to send logs to
 	LogEndpoint string `envconfig:"LOG_ENDPOINT" default:"http://localhost:3100/loki/api/v1/push"`
+	// LogAuthHeader is the auth header to use when sending logs
+	LogAuthHeader string `envconfig:"LOG_AUTH_HEADER" default:""`
 	// OTELInsecure is whether to use an insecure connection to the OTEL collector
 	OTELInsecure bool `envconfig:"OTEL_INSECURE" default:"false"`
 }
@@ -76,7 +78,7 @@ func main() {
 	}
 
 	// Setup API
-	api, err := NewAPI(ctx, ghclient, conf.LogEndpoint)
+	api, err := NewAPI(ctx, ghclient, conf.LogEndpoint, conf.LogAuthHeader)
 	if err != nil {
 		slog.Error("failed to setup api", "error", err)
 		os.Exit(1)

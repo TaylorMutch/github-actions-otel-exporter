@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki-client-go/loki"
 	"github.com/grafana/loki-client-go/pkg/urlutil"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/config"
 	sloggin "github.com/samber/slog-gin"
 )
 
@@ -23,14 +24,21 @@ type API struct {
 }
 
 // NewAPI creates a new API instance
-func NewAPI(ctx context.Context, ghclient *github.Client, logEndpoint string) (*API, error) {
+func NewAPI(ctx context.Context, ghclient *github.Client, logEndpoint, logAuthHeader string) (*API, error) {
 	var lokiClient *loki.Client
 	if logEndpoint != "" {
+		slog.Info("enabling loki client for log")
 		var u urlutil.URLValue
 		u.Set(logEndpoint)
 		lokiConf, err := loki.NewDefaultConfig(logEndpoint)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create loki config: %w", err)
+		}
+		if logAuthHeader != "" {
+			slog.Info("using authenicated loki client")
+			lokiConf.Client.Authorization = &config.Authorization{
+				Credentials: config.Secret(logAuthHeader),
+			}
 		}
 		lokiClient, err = loki.New(lokiConf)
 		if err != nil {

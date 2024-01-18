@@ -80,7 +80,7 @@ You should now see the server is started. From here you can trigger a workflow r
 
 Visit the Grafana locally at [http://localhost:3000](http://localhost:3000) (no login required) and select the "Loki" datasource. You can query for the logs from the workflow run using a [query similar to the following](http://localhost:3000/explore?schemaVersion=1&panes=%7B%22eMU%22:%7B%22datasource%22:%22loki-local%22,%22queries%22:%5B%7B%22refId%22:%22A%22,%22expr%22:%22%7Bworkflow_name%3D%5C%22Hello%20World%5C%22%7D%22,%22queryType%22:%22range%22,%22datasource%22:%7B%22type%22:%22loki%22,%22uid%22:%22loki-local%22%7D,%22editorMode%22:%22code%22%7D%5D,%22range%22:%7B%22from%22:%22now-30m%22,%22to%22:%22now%22%7D%7D%7D&orgId=1):
 
-```
+```logql
 {workflow_name="Hello World"}
 ```
 
