@@ -37,6 +37,7 @@ services:
       - ./local-dev/otel-collector-config.yaml:/etc/otel-collector-config.yaml
     ports:
       - "4317:4317"   # OTLP gRPC receiver
+      - "3500:3500"   # Loki http receiver
     depends_on:
       - tempo
       - mimir

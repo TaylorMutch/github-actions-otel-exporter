@@ -2,6 +2,10 @@ receivers:
   otlp:
     protocols:
       grpc:
+  loki:
+    protocols:
+      http:
+    use_incoming_timestamp: true
 
 exporters:
   otlp:
@@ -12,9 +16,19 @@ exporters:
     endpoint: "http://mimir:8080/otlp"
     tls:
       insecure: true
+  loki:
+    endpoint: "http://loki:3100/loki/api/v1/push"
 
 processors:
   batch:
+  attributes:
+    actions:
+      - action: insert
+        key: loki.format
+        value: raw
+      - action: insert
+        key: loki.attribute.labels
+        value: trace_id, repo_owner, repo_name, workflow_name, workflow_id, workflow_job_name, workflow_job_id
 
 service:
   pipelines:
@@ -26,3 +40,7 @@ service:
       receivers: [otlp]
       processors: [batch]
       exporters: [otlp]
+    logs:
+      receivers: [loki]
+      processors: [batch, attributes]
+      exporters: [loki]
