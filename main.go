@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/kelseyhightower/envconfig"
 )
 
 const (
@@ -19,15 +19,34 @@ const (
 	httpShutdownTimeout = time.Second * 5
 )
 
+type Config struct {
+	// GithubPAT is a personal access token with permissions to read workflow runs.
+	// This is used for local development or testing. If you are running this in
+	// production, you should use a GitHub app using the GithubAppFilename, GithubAppID, and
+	// GithubInstallID configuration options.
+	GithubPAT string `envconfig:"GHA_PAT" default:""`
+	// GithubAppFilename is the path to the private key file for the GitHub App
+	GithubAppFilename string `envconfig:"GHA_APP_FILENAME" default:""`
+	// GithubAppID is the GitHub App ID
+	GithubAppID int64 `envconfig:"GHA_APP_ID" default:"0"`
+	// GithubInstallID is the GitHub App Installation ID
+	GithubInstallID int64 `envconfig:"GHA_INSTALL_ID" default:"0"`
+	// Address is the address to listen on
+	Address string `envconfig:"ADDRESS" default:":8081"`
+	// LogEndpoint is the endpoint to send logs to
+	LogEndpoint string `envconfig:"LOG_ENDPOINT" default:"http://localhost:3100/loki/api/v1/push"`
+	// OTELInsecure is whether to use an insecure connection to the OTEL collector
+	OTELInsecure bool `envconfig:"OTEL_INSECURE" default:"false"`
+}
+
 func main() {
-	pat := flag.String("gha-pat", "", "GitHub Actions Personal Access Token")
-	appFilename := flag.String("gha-app-filename", "", "GitHub App file path")
-	appID := flag.Int64("gha-app-id", 0, "GitHub App ID")
-	installID := flag.Int64("gha-install-id", 0, "GitHub App Installation ID")
-	address := flag.String("address", ":8081", "Address to listen on")
-	logEndpoint := flag.String("log-endpoint", "http://localhost:3100/loki/api/v1/push", "Loki endpoint")
-	otelInsecure := flag.Bool("otel-insecure", false, "Use insecure connection for OTEL")
-	flag.Parse()
+	var conf Config
+	err := envconfig.Process("", &conf)
+	if err != nil {
+		slog.Error("failed to process env vars", "error", err)
+		os.Exit(1)
+	}
+
 	gin.SetMode(gin.ReleaseMode)
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
@@ -37,7 +56,7 @@ func main() {
 	defer cancel()
 
 	// Setup OTEL exporter
-	shutdown, err := setupOTelSDK(ctx, serviceName, serviceVersion, *otelInsecure)
+	shutdown, err := setupOTelSDK(ctx, serviceName, serviceVersion, conf.OTELInsecure)
 	if err != nil {
 		slog.Error("failed to setup OTEL SDK", "error", err)
 		os.Exit(1)
@@ -45,14 +64,19 @@ func main() {
 	defer shutdown(ctx)
 
 	// Setup GitHub client
-	ghclient, err := getGithubClient(*pat, *appFilename, *appID, *installID)
+	ghclient, err := getGithubClient(
+		conf.GithubPAT,
+		conf.GithubAppFilename,
+		conf.GithubAppID,
+		conf.GithubInstallID,
+	)
 	if err != nil {
 		slog.Error("failed to setup github client", "error", err)
 		os.Exit(1)
 	}
 
 	// Setup API
-	api, err := NewAPI(ctx, ghclient, *logEndpoint)
+	api, err := NewAPI(ctx, ghclient, conf.LogEndpoint)
 	if err != nil {
 		slog.Error("failed to setup api", "error", err)
 		os.Exit(1)
@@ -62,7 +86,7 @@ func main() {
 
 	// Start the server
 	server := &http.Server{
-		Addr:    *address,
+		Addr:    conf.Address,
 		Handler: api.Router,
 	}
 	go gracefulShutdown(ctx, server, api)
@@ -85,4 +109,5 @@ func gracefulShutdown(ctx context.Context, server *http.Server, api *API) {
 	if err := api.Shutdown(); err != nil {
 		slog.Error("unable to shutdown api", "error", err)
 	}
+	slog.Info("server shutdown complete, see you next time")
 }

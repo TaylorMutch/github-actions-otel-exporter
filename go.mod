@@ -7,6 +7,7 @@ require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/google/go-github/v58 v58.0.0
 	github.com/grafana/loki-client-go v0.0.0-20230116142646-e7494d0ef70c
+	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/prometheus/client_golang v1.18.0
 	github.com/prometheus/common v0.45.0
 	github.com/samber/slog-gin v1.9.0
